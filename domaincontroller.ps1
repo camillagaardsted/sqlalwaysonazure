@@ -6,7 +6,7 @@ param(
 
 Install-WindowsFeature -Name AD-Domain-Services
 
-$Password = ConvertTo-SecureString -AsPlainText $password -Force
+$PasswordSecure = ConvertTo-SecureString -AsPlainText $password -Force
 # take first part of domainname as biosdomainname
 $domainnameBIOS=$domainname.split(".")[0]
 $Params = @{
@@ -19,7 +19,7 @@ $Params = @{
  InstallDns = $true
  LogPath = 'C:\Windows\NTDS'
  NoRebootOnCompletion = $true
- SafeModeAdministratorPassword = $Password
+ SafeModeAdministratorPassword = $PasswordSecure
  SysvolPath = 'C:\Windows\SYSVOL'
  Force = $true
 }

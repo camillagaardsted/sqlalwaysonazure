@@ -114,11 +114,41 @@ az vm create \
     --vnet-name $VNetName
 
 wget https://raw.githubusercontent.com/camillagaardsted/sqlalwaysonazure/main/domaincontroller.ps1
+# https://docs.microsoft.com/en-us/cli/azure/vm/run-command?view=azure-cli-latest
+az vm run-command invoke  --command-id RunPowerShellScript --name $DCName -g $ResourceGroupName --scripts @domaincontroller.ps1 --parameters 'password='$AdminPassword 'domainname='$DomainName
 
-az vm run-command invoke  --command-id RunPowerShellScript --name $DCName -g $ResourceGroupName --scripts @domaincontroller.ps1 --parameters $AdminPassword,$DomainName
+# while the dc reboots we create a storage account 
+
+# create storage account
+az storage account create -n $StorageAccountName -g $ResourceGroupName -l $Location --sku Standard_LRS --kind StorageV2 --access-tier Hot --https-only true
+
+Key1=$(az storage account keys list --account-name $StorageAccountName --query [0].value -o tsv)
+
+serviceAccountAD=sqlserver@$DomainName
+adminAccountAD=$AdminUsername@$DomainName
+
+# create group for the cluster
+az sql vm group create -n agcluster -l $Location -g $ResourceGroupName --image-offer SQL2017-WS2016 --image-sku Developer --domain-fqdn $DomainName --operator-acc $adminAccountAD --bootstrap-acc $adminAccountAD --service-acc $serviceAccountAD --sa-key $Key1 --storage-account 'https://'$StorageAccountName'.blob.core.windows.net'
+
+
+# create user in AD for sql server 
+
+#az vm run-command invoke  --command-id RunPowerShellScript --name $DCName -g $ResourceGroupName --scripts 'param($password) $PasswordSecure = ConvertTo-SecureString -AsPlainText $password -Force;new-aduser -name sqlserver -samaccountname sqlserver -AccountPassword $PasswordSecure -Enabled $true' --parameters 'password='$AdminPassword
+
 
 wget https://raw.githubusercontent.com/camillagaardsted/sqlalwaysonazure/main/sqlserveraddtodomain.ps1
 
-az vm run-command invoke  --command-id RunPowerShellScript --name $SQLNODE1 -g $ResourceGroupName --scripts @sqlserveraddtodomain.ps1 --parameters $AdminUsername,$AdminPassword,$DomainName,$DCIP
+az vm run-command invoke  --command-id RunPowerShellScript --name $SQLNODE1 -g $ResourceGroupName --scripts @sqlserveraddtodomain.ps1 --parameters 'adminADaccount='$AdminUsername 'password='$AdminPassword 'domainname='$DomainName 'DNSServerIP='$DCIP
 
-az vm run-command invoke  --command-id RunPowerShellScript --name $SQLNODE2 -g $ResourceGroupName --scripts @sqlserveraddtodomain.ps1 --parameters $AdminUsername,$AdminPassword,$DomainName,$DCIP
+az vm run-command invoke  --command-id RunPowerShellScript --name $SQLNODE2 -g $ResourceGroupName --scripts @sqlserveraddtodomain.ps1 --parameters 'adminADaccount='$AdminUsername 'password='$AdminPassword 'domainname='$DomainName 'DNSServerIP='$DCIP
+
+
+# Register Enterprise or Standard self-installed VM in Lightweight mode
+az sql vm create --name $SQLNODE1 --resource-group $ResourceGroupName --location $Location --license-type payg
+az sql vm create --name $SQLNODE2 --resource-group $ResourceGroupName --location $Location --license-type payg
+
+
+az sql vm add-to-group -n $SQLNODE1 -g $ResourceGroupName --sqlvm-group agcluster -b $AdminPassword -p $AdminPassword -s $AdminPassword
+az sql vm add-to-group -n $SQLNODE2 -g $ResourceGroupName --sqlvm-group agcluster -b $AdminPassword -p $AdminPassword -s $AdminPassword
+
+

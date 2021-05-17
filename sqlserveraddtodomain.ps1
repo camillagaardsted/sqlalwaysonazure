@@ -7,8 +7,8 @@ param(
 
 # add to domain
 $Password = ConvertTo-SecureString -AsPlainText $password -Force
-
-$Credential = New-Object -TypeName PSCredential -ArgumentList "$domainname\$adminADAccount",$Password
+$user = "$domainname\$adminADAccount"
+$Credential = New-Object -TypeName PSCredential -ArgumentList $user,$Password
 
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet 2" -ServerAddresses ($DNSServerIP)
 
